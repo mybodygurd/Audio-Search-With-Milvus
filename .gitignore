@@ -1,4 +1,10 @@
 .venv
 audio_fp/
+pretrained_models/
+__pycache__/
 audio_fp.zip
 *.db
+github_token.txt
+.env
+*.pyc
+*.pyo
