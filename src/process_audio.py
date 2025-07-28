@@ -3,7 +3,7 @@ import torchaudio
 from io import BytesIO
 
 def get_file_extension(file_name: str) -> str | None:
-    file_formats = {"wav", "mp3", "m4a"}
+    file_formats = {"wav", "mp3", "m4a", "ogg", "aac"}
     ext = file_name.split(".")[-1].lower()
     if ext in file_formats:
         return ext

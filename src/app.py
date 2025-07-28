@@ -3,21 +3,34 @@ from io import BytesIO
 from insert import insert
 from process_audio import load_and_resample_audio, get_file_extension
 from encoder import FeatureExtractor
-from milvus_utils import get_milvus_client, semantic_search
-from minio_utils import get_minio_client, download_audio
+from milvus_utils import semantic_search, get_milvus_client
+from minio_utils import download_audio, get_minio_client
 from config import *
 
-
-milvus_client = get_milvus_client(MILVUS_ENDPOINT)
+milvus_client = get_milvus_client(uri=MILVUS_ENDPOINT)
 minio_client = get_minio_client(
-    end_point=MINIO_ENDPOINT,
-    access_key=MINIO_ACCESS_KEY,
-    secret_key=MINIO_SECRET_KEY
-)
+        end_point=MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY
+    )
 
 @st.cache_resource
 def get_audio_encoder():
     return FeatureExtractor(MODEL_NAME)
+
+@st.cache_data
+def get_audio_embedding(file, _audio_encoder):
+    file_bytes = BytesIO(file.read())
+    file_bytes.seek(0)
+    ext = get_file_extension(query_file.name)
+    if ext is None:
+        raise FileExistsError(f"couldn't extract the extension file: {query_file.name}")
+    resampled_audio = load_and_resample_audio(
+        file=file_bytes,
+        target_sr=TARGET_SAMPLE_RATE,
+        audio_format=ext
+    )   
+    return _audio_encoder(resampled_audio)
 
 
 st.title("Audio Search Wtih Milvus")
@@ -28,40 +41,30 @@ st.markdown(
     """
 )
 
-cols = st.columns([2, 2, 2])
+cols = st.columns([1, 1, 1])
 
 with st.sidebar:
     st.image("./pics/Milvus_Logo_Official.png", width=200)
     uploaded_files = st.file_uploader(
         "Upload audio files...",
-        type=["wav", "mp3", "m4a"],
+        type=["wav", "mp3", "m4a", "ogg", "aac"],
         accept_multiple_files=True
     )
     
 if uploaded_files:
     if st.sidebar.button("Index Audio Files"):
         st.write("Indexing audio files to Milvus & Minio...")
-        insert(uploaded_files)
+        insert(
+            files=uploaded_files,
+            encoder=get_audio_encoder(),
+            milvus_client=milvus_client,
+            minio_client=minio_client
+        )
         st.success("Files indexed successfully.")
-    query_file = st.file_uploader(
+    query_file = st.sidebar.file_uploader(
         "Upload audio file...",
-        type=["wav", "mp3", "m4a"]
+        type=["wav", "mp3", "m4a", "ogg", "aac"]
     )
-    
-    @st.cache_data
-    def get_audio_embedding(file, _audio_encoder):
-        file_bytes = BytesIO(file.read())
-        file_bytes.seek(0)
-        ext = get_file_extension(query_file.name)
-        if ext is None:
-            raise FileExistsError(f"couldn't extract the extension file: {query_file.name}")
-        resampled_audio = load_and_resample_audio(
-            file=file_bytes,
-            target_sr=TARGET_SAMPLE_RATE,
-            audio_format=ext
-        )   
-        return _audio_encoder(resampled_audio)
-    
     if query_file:
         audio_encoder = get_audio_encoder()
         st.info("Performing Semantic Search...")
@@ -90,5 +93,3 @@ if uploaded_files:
                     st.write(f"File: {object_key}")
                     
     
-
-

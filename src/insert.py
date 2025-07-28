@@ -3,25 +3,15 @@ import uuid
 from milvus_utils import get_milvus_client, create_vector_db
 from minio_utils import get_minio_client, upload_bytes
 from process_audio import load_and_resample_audio, split_audio, get_file_extension
-from encoder import FeatureExtractor
 from config import *
 from io import BytesIO
 from tqdm import tqdm
 
 
-
-def insert(files):
-    audio_encoder = FeatureExtractor(MODEL_NAME)
-    milvus_client = get_milvus_client(uri=MILVUS_ENDPOINT)
-    minio_client = get_minio_client(
-        end_point=MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY
-    )
+def insert(files, encoder, milvus_client, minio_client):
     create_vector_db(
         client=milvus_client, collection_name=COLLECTION_NAME, dim=int(MODEL_DIM)
     )
-
     data = []
     for file in tqdm(files):
         try:
@@ -29,7 +19,7 @@ def insert(files):
             obj_file.seek(0)
             ext = get_file_extension(file.name)
             if ext is None:
-                raise FileExistsError(f"couldn't extact the extention of file: {file.name}")
+                raise ValueError(f"couldn't extact the extention of file: {file.name}")
             waveform = load_and_resample_audio(
                 file=obj_file,
                 target_sr=TARGET_SAMPLE_RATE,
@@ -40,14 +30,17 @@ def insert(files):
                 chunk_duration_sec=CHUNK_DURATION_RATE,
                 target_sr=TARGET_SAMPLE_RATE
             )
+            buff = BytesIO()
             for idx, chunk in enumerate(chunks):
-                buff = BytesIO()
+                buff.seek(0)
+                buff.truncate()
                 torchaudio.save(
                     uri=buff,
                     src=chunk,
                     sample_rate=16000,
                     format="wav"
                 )
+                buff.seek(0)
                 key = f"{file.name}/{uuid.uuid4()}_chunk_{idx}.wav"
                 audio_url = upload_bytes(
                     client=minio_client,
@@ -57,7 +50,7 @@ def insert(files):
                     bucket_name=MINIO_BUCKET_NAME
                 )
 
-                emb = audio_encoder(chunk)
+                emb = encoder(chunk)
                 data.append(
                     {
                         "vector": emb.tolist(),

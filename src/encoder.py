@@ -16,3 +16,4 @@ class FeatureExtractor:
         emb_np = emb.squeeze().numpy()
         return normalize(emb_np.reshape(1, -1), norm="l2").flatten()
 
+
